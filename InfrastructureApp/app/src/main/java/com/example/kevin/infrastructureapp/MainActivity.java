@@ -5,7 +5,6 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.os.Debug;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -19,14 +18,15 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
 
+import java.io.Console;
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.List;
 
 
 public class MainActivity extends AppCompatActivity  {
-
     //Database variables
-
 
     //Backend variables
     private SensorManager mSensorManager;
@@ -36,10 +36,10 @@ public class MainActivity extends AppCompatActivity  {
     private float acX, acY, acZ;
     private long pX;
     private Date currentTime ;
-    private DatabaseReference mFirebaseDatabase;
     private FirebaseDatabase mFirebaseInstance;
-
-
+    private SimpleDateFormat dateFormat;
+    private String dateTime;
+    private DatabaseReference myRefLatestTime, myRefSensor;
 
 
     //UI variables
@@ -47,19 +47,17 @@ public class MainActivity extends AppCompatActivity  {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Write a message to the database
-        mFirebaseInstance = FirebaseDatabase.getInstance();
-
-        // get reference to 'users' node
-        mFirebaseDatabase = mFirebaseInstance.getReference("LastTime");
-
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
+        mFirebaseInstance = FirebaseDatabase.getInstance();
+        dateFormat = new SimpleDateFormat("yyyy-MM-dd' 'HH:mm:ss ");
         mSensorManager =  (SensorManager) getSystemService(SENSOR_SERVICE);
         mAcceleroMeter = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         mProximity = mSensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY);
-
+        myRefLatestTime = mFirebaseInstance.getReference("LatestTime");
+        myRefLatestTime.addValueEventListener(valueListener);
+        myRefSensor = mFirebaseInstance.getReference("Sensordata");
+        myRefSensor.addValueEventListener(sensorListener);
 
         if(mProximity == null) {
             Log.e("prox", "Proximity sensor not available.");
@@ -73,10 +71,69 @@ public class MainActivity extends AppCompatActivity  {
 
         AcceleroResult = (TextView) findViewById(R.id.AcceleroResult);
         ProximityResult = (TextView) findViewById(R.id.ProximityResult);
-        Debug =  (TextView) findViewById(R.id.Debug);
 
+       //Be able to show a list of alll sensors present
+        Debug =  (TextView) findViewById(R.id.Debug);
+        // checkSensors();
 
     }
+
+    private void checkSensors(){
+        // List of Sensors Available
+        List<Sensor> msensorList = mSensorManager.getSensorList(Sensor.TYPE_ALL);
+
+        // Print each Sensor available using sSensList as the String to be printed
+        String sSensList = new String("");
+        Sensor tmp;
+        int x,i;
+        for (i=0;i<msensorList.size();i++){
+            tmp = msensorList.get(i);
+            sSensList = " "+sSensList+tmp.getName(); // Add the sensor name to the string of sensors available
+        }
+        // if there are sensors available show the list
+        if (i>0){
+            sSensList = getString(R.string.sensors)+":"+sSensList;
+            Debug.setText(sSensList);
+        }
+    }
+
+    // Read from the database
+    ValueEventListener valueListener = new ValueEventListener() {
+        @Override
+        public void onDataChange(DataSnapshot dataSnapshot) {
+            // This method is called once with the initial value and again
+            // whenever data at this location is updated.
+            String time = dataSnapshot.getValue(String.class);
+            Log.d("eeeeeeeeeeeeeeee",time);
+            ProximityResult.setText(time);
+
+
+        }
+
+        @Override
+        public void onCancelled(DatabaseError error) {
+
+        }
+    };
+
+    ValueEventListener sensorListener = new ValueEventListener() {
+        @Override
+        public void onDataChange(DataSnapshot dataSnapshot) {
+            // This method is called once with the initial value and again
+            // whenever data at this location is updated.
+            String accelero = dataSnapshot.child("AcceleroData").getValue(String.class);
+            String proximity = dataSnapshot.child("ProximityData").getValue(String.class);
+            AcceleroResult.setText(accelero);
+
+
+        }
+
+        @Override
+        public void onCancelled(DatabaseError error) {
+
+        }
+    };
+
     //Using proximity to change colors.
     SensorEventListener proximitySensorListener = new SensorEventListener() {
         @Override
@@ -89,34 +146,19 @@ public class MainActivity extends AppCompatActivity  {
                 if(pX < mProximity.getMaximumRange()) {
                     currentTime = Calendar.getInstance().getTime();
 
+                    dateTime = dateFormat.format(currentTime);
+
                     getWindow().getDecorView().setBackgroundColor(Color.RED);
+                    myRefLatestTime.setValue(dateTime);
 
-
-                } else {
+                }
+                else {
                     // Nothing is nearby
                     getWindow().getDecorView().setBackgroundColor(Color.GREEN);
+                    //count time nearby
+
+                    myRefSensor.child("ProximityData").setValue(String.valueOf("pX " + pX));
                 }
-                mFirebaseInstance.getReference("LastTime").setValue("A test");
-
-                mFirebaseInstance.getReference("LastTime").addValueEventListener(new ValueEventListener() {
-                    @Override
-                    public void onDataChange(DataSnapshot dataSnapshot) {
-                        Log.e("TAG", "LastTime Updated");
-
-                        String appTitle = dataSnapshot.getValue(String.class);
-
-                        // update toolbar title
-                        getSupportActionBar().setTitle(appTitle);
-                    }
-
-                    @Override
-                    public void onCancelled(DatabaseError error) {
-                        // Failed to read value
-                        Log.e("TAG", "Failed to read LastTime.", error.toException());
-                    }
-                });
-                //dbRef.child("Proximity").setValue(currentTime);
-                ProximityResult.setText(" X " + currentTime);
 
 
             }
@@ -126,39 +168,6 @@ public class MainActivity extends AppCompatActivity  {
         public void onAccuracyChanged(Sensor sensor, int i) {
         }
     };
-
-   /**private void addTime() {
-        // time data change listener
-        mFirebaseDatabase.child(userId).addValueEventListener(new ValueEventListener() {
-            @Override
-            public void onDataChange(DataSnapshot dataSnapshot) {
-                User user = dataSnapshot.getValue(User.class);
-
-                // Check for null
-                if (user == null) {
-                    Log.e(TAG, "User data is null!");
-                    return;
-                }
-
-                Log.e(TAG, "User data is changed!" + user.name + ", " + user.email);
-
-                // Display newly updated name and email
-                txtDetails.setText(user.name + ", " + user.email);
-
-                // clear edit text
-                inputEmail.setText("");
-                inputName.setText("");
-
-                toggleButton();
-            }
-
-            @Override
-            public void onCancelled(DatabaseError error) {
-                // Failed to read value
-                Log.e(TAG, "Failed to read user", error.toException());
-            }
-        });
-    }**/
 
     SensorEventListener AccelerometerSensorListener = new SensorEventListener() {
         @Override
@@ -170,7 +179,9 @@ public class MainActivity extends AppCompatActivity  {
                 acY = sensorEvent.values[1];
                 acZ = sensorEvent.values[2];
 
-                AcceleroResult.setText("X" + acX + " Y " + acY + " Z " + acZ);
+             //  AcceleroResult.setText("X" + acX + " Y " + acY + " Z " + acZ);
+                myRefSensor.child("AcceleroData").setValue(String.valueOf("X" + acX + " Y " + acY + " Z " + acZ));
+
             }
         }
 
@@ -194,6 +205,7 @@ public class MainActivity extends AppCompatActivity  {
                 mProximity, 2 * 1000 * 1000);
         mSensorManager.registerListener(AccelerometerSensorListener, mAcceleroMeter, SensorManager.SENSOR_DELAY_NORMAL);
         isRunning = true;
+
     }
 }
 
